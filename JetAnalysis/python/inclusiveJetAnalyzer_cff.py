@@ -37,6 +37,8 @@ inclusiveJetAnalyzer = cms.EDAnalyzer("HiInclusiveJetSubstructure",
                                       doSubEvent = cms.untracked.bool(False),
                                       doChargedConstOnly = cms.untracked.bool(True),
                                       doHardestSplitMatching = cms.untracked.bool(True),
-                                      doTrackVariation = cms.untracked.bool(True),
-                                      # pfChargedEnergyScaleVar = cms.untracked.double(0.99)
+                                      doTrackVariation = cms.untracked.bool(False),
+                                      pfChargedEnergyScaleVar = cms.untracked.double(1.),
+                                      pfNeutralEnergyScaleVar = cms.untracked.double(1.),
+                                      pfGammaEnergyScaleVar = cms.untracked.double(1.)
                                       )

@@ -137,8 +137,14 @@ HiInclusiveJetSubstructure::HiInclusiveJetSubstructure(const edm::ParameterSet& 
 
   doSubEvent_ = 0;
   doChargedConstOnly_ = iConfig.getUntrackedParameter<bool>("doChargedConstOnly",0);
+  doTrackVariation_ = -1;
+  pfChargedCandidateEnergyScale_ = -1;
+  pfNeutralCandidateEnergyScale_ = -1;
+  pfGammaCandidateEnergyScale_ = -1;
   if(isMC_){
     pfChargedCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfChargedEnergyScaleVar",1.);
+    pfNeutralCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfNeutralEnergyScaleVar",1.);
+    pfGammaCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfGammaEnergyScaleVar",1.);
     doTrackVariation_ = iConfig.getUntrackedParameter<bool>("doTrackVariation",false);
     genPtMin_ = iConfig.getUntrackedParameter<double>("genPtMin",10);
     doSubEvent_ = iConfig.getUntrackedParameter<bool>("doSubEvent",0);
@@ -158,6 +164,8 @@ void HiInclusiveJetSubstructure::beginJob() {
   std::cout << "Running job with systematics" << std::endl;
   std::cout << "Track efficiency var: " << doTrackVariation_ <<std::endl;
   std::cout << "Charged pfCand 4-mom var: " << pfChargedCandidateEnergyScale_ << std::endl;
+  std::cout << "Neutral pfCand 4-mom var: " << pfNeutralCandidateEnergyScale_ << std::endl;
+  std::cout << "Photon pfCand 4-mom var: " << pfGammaCandidateEnergyScale_ << std::endl;
   string jetTagTitle = jetTagLabel_.label()+" Jet Analysis Tree";
   t = fs1->make<TTree>("t",jetTagTitle.c_str());
   t->Branch("run",&jets_.run,"run/I");
@@ -170,6 +178,7 @@ void HiInclusiveJetSubstructure::beginJob() {
   }
 
   t->Branch("nref",&jets_.nref,"nref/I");
+  t->Branch("jtptUncorrected",jets_.rawpt,"jtptUncorrected[nref]/F");
   t->Branch("jtpt",jets_.jtpt,"jtpt[nref]/F");
   t->Branch("jteta",jets_.jteta,"jteta[nref]/F");
   t->Branch("jtphi",jets_.jtphi,"jtphi[nref]/F");
@@ -290,14 +299,16 @@ void HiInclusiveJetSubstructure::analyze(const Event& iEvent, const EventSetup& 
   jets_.triggerJetInAcceptance = false;
     // std::cout << "Number of jets: " << jets->size() << std::endl;
   for(unsigned int j = 0; j < jets->size(); ++j){
-    const pat::Jet& jet = (*jets)[j];   
+    const pat::Jet& jet = (*jets)[j];
     auto pt = useRawPt_ ? jet.correctedJet("Uncorrected").pt() : jet.pt();
     if(pt < jetPtMin_) continue;
     if(std::abs(jet.eta()) > jetAbsEtaMax_-rParam) continue;
+    // std::cout << "Raw pt: " << jet.correctedJet("Uncorrected").pt() << " corrected: " << jet.pt() << " eta: " << jet.eta() << std::endl;
     //assume highest jet in event is also the trigger object, check if it's within the eta acceptance above
     if(j==0){ 
       jets_.triggerJetInAcceptance = true;
     }
+    jets_.rawpt[jets_.nref] = jet.correctedJet("Uncorrected").pt();
     jets_.jtpt[jets_.nref] = jet.pt();
     jets_.jteta[jets_.nref] = jet.eta();
     jets_.jtphi[jets_.nref] = jet.phi();
@@ -433,7 +444,21 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
       if(doChargedConstOnly_ && (**it).charge()==0) continue;
       double PFE_scale = 1.;
       //if it is MC, rescale the 4-momentum of the charged particles (we accept only them above) by pfCCES(+-1%)
-      if(isMC_) PFE_scale = pfChargedCandidateEnergyScale_;
+      if(isMC_){
+        if((**it).charge()!=0)
+          PFE_scale = pfChargedCandidateEnergyScale_;
+        else if((**it).pdgId()==22){
+          PFE_scale = pfGammaCandidateEnergyScale_;
+          // std::cout << "Photon found! " << (**it).mass() << std::endl;
+        }
+        else if((**it).pdgId()==130){
+          PFE_scale = pfNeutralCandidateEnergyScale_;
+          // std::cout << "Neutral found with ID: " << (**it).pdgId() << std::endl;
+        }
+        else{
+          std::cout << "Not supposed to be here!!!!! What is this particle: " << (**it).pdgId() << std::endl;
+        }
+      }
       //vary tracking efficiency - drop ~4% of particles within the jet
       if(isMC_ && doTrackVariation_){
         // std::cout << "doing the track variation" << std::endl;
@@ -604,6 +629,123 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringGen(double groom_type, dou
       std::cout << "Jet does not have any parents, out of the loop!" << std::endl;
   }
 }
+// My dream is indefinitely on hold :(
+// template<typename T>
+// void HiInclusiveJetSubstructure::TemplateDeclustering(Bool_t recoLevel, double groom_type, T& jet)
+// {
+//   TRandom *r1 = new TRandom3(0);
+//   Int_t intjet_multi = 0;
+//   float jet_girth = 0;
+//   Int_t nsplit = 0;
+//   double dyn_kt = std::numeric_limits<double>::min();
+//   Int_t dyn_split = 0;
+//   double z = 0;
+//   double dyn_deltaR = 0;
+//   // double dyn_var = std::numeric_limits<double>::min();
+//   double dyn_z = 0;
+//   fastjet::PseudoJet myjet;
+//   fastjet::PseudoJet mypart;
+//   myjet.reset(jet.p4().px(),jet.p4().py(),jet.p4().pz(),jet.p4().e());
+//   // Reclustering jet constituents with new algorithm
+//   try{
+//     std::vector<fastjet::PseudoJet> particles = {};                         
+//     auto daughters = jet.getJetConstituents();
+//         // std::cout << "Number of pfCand " << pfCandidates.size() << std::endl;
+//     // std::vector<int> vec_jet_consituent_charge;
+//     for(auto it = daughters.begin(); it!=daughters.end(); ++it){
+//       //if we want only charged constituents and the daughter charge is 0, skip it
+//       if(doChargedConstOnly_ && (**it).charge()==0) continue;
+//       double PFE_scale = 1.;
+//       //if it is MC, rescale the 4-momentum of the charged particles (we accept only them above) by pfCCES(+-1%)
+//       if(isMC_ && recoLevel && (**it).charge()!=0) PFE_scale = pfChargedCandidateEnergyScale_;
+//       //shouldn't go into else in charged MC case 
+//       else if(isMC_ && recoLevel && (**it).charge()==0) PFE_scale = pfNeutralCandidateEnergyScale_;
+//       //vary tracking efficiency - drop ~4% of particles within the jet
+//       if(isMC_ && recoLevel && doTrackVariation_){
+//         // std::cout << "doing the track variation" << std::endl;
+//         if(r1->Uniform(0,1)<0.05) continue;
+//       }
+//       // std::cout << "Rescaling charged pfCand energy by " << PFE_scale << std::endl;
+//       particles.push_back(fastjet::PseudoJet((**it).px()*PFE_scale, (**it).py()*PFE_scale, (**it).pz()*PFE_scale, (**it).energy()*PFE_scale));
+//       mypart.reset((**it).px()*PFE_scale, (**it).py()*PFE_scale, (**it).pz()*PFE_scale, (**it).energy()*PFE_scale);
+//       intjet_multi++;
+//       jet_girth += mypart.perp()*mypart.delta_R(myjet)/myjet.perp();
+
+//     }
+//     //Call substructure loop function here
+
+//     // std::cout << "Particle container has " << particles.size() << " reco particles" << std::endl;
+//     if(particles.empty()){
+//       // jets_.jtdyn_var[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jtdyn_split[jets_.nref] = std::numeric_limits<int>::min();
+//       jets_.jtdyn_deltaR[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jtdyn_kt[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jtdyn_z[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jt_intjet_multi[jets_.nref] = std::numeric_limits<int>::min();
+//       jets_.jt_girth[jets_.nref] = - std::numeric_limits<double>::max();
+//       throw(123);
+//     }
+//     // std::cout << "Clustering " << particles.size() << " number of reco particles" << std::endl;
+//     fastjet::ClusterSequence csiter(particles, jet_def);
+//     std::vector<fastjet::PseudoJet> output_jets = csiter.inclusive_jets(0);
+//     output_jets = sorted_by_pt(output_jets);
+//     fastjet::PseudoJet jj = output_jets[0];
+//     fastjet::PseudoJet j1;
+//     fastjet::PseudoJet j2;
+//     fastjet::PseudoJet highest_splitting;
+//     if(!jj.has_parents(j1,j2)){
+//       jets_.jtdyn_split[jets_.nref] = std::numeric_limits<int>::min();
+//       jets_.jtdyn_deltaR[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jtdyn_kt[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jtdyn_z[jets_.nref] = - std::numeric_limits<double>::max();
+//       jets_.jt_intjet_multi[jets_.nref] = std::numeric_limits<int>::min();
+//       jets_.jt_girth[jets_.nref] = - std::numeric_limits<double>::max();
+//       throw(124);
+//     }
+//     while(jj.has_parents(j1,j2)){
+//       if(j1.perp() < j2.perp()) std::swap(j1,j2);
+//       double delta_R = j1.delta_R(j2);
+//       if(doHardestSplitMatching_ && isMC_) jets_.jtJetConstituent.push_back(j2);
+//       double k_t = j2.perp()*delta_R;
+//       z = j2.perp()/(j1.perp()+j2.perp());
+//       // double dyn = z*(1-z)*j2.perp()*pow(delta_R/rParam,mydynktcut);
+//       // double dyn = 1./output_jets[0].perp()*z*(1-z)*jj.perp()*pow(delta_R/rParam,mydynktcut);
+//       // std::cout << "Reco split " << nsplit << " with k_T=" << k_t << " z=" << z << " eta " << j2.eta() << " phi " << j2.phi() <<  std::endl;
+//       if(k_t > dyn_kt){
+//         // dyn_var = dyn;
+//         highest_splitting = j2;
+//         dyn_kt = k_t;
+//         dyn_split = nsplit;
+//         dyn_deltaR = delta_R;
+//         dyn_z = z;
+//       }
+//       jj = j1;
+//       nsplit = nsplit+1;
+//     }
+
+//     // std::cout << highest_splitting.eta() << " " << highest_splitting.phi() << " highest reco splitting eta phi at " << dyn_split << std::endl;
+//     // jets_.jtdyn_var[jets_.nref] = dyn_var;
+//     jets_.jtdyn_split[jets_.nref] = dyn_split;
+//     jets_.jtdyn_deltaR[jets_.nref] = dyn_deltaR;
+//     jets_.jtdyn_kt[jets_.nref] = dyn_kt;
+//     jets_.jtdyn_z[jets_.nref] = dyn_z;
+//     jets_.jt_intjet_multi[jets_.nref] = intjet_multi;
+//     jets_.jt_girth[jets_.nref] = jet_girth;
+//   } 
+//   catch (fastjet::Error) { /*return -1;*/ }
+//   catch (Int_t MyNum){
+//     if(MyNum == 123)
+//       std::cout << "Whoops, seems the number of charged jet constituents is 0! Setting all reco jet split variables to numeric min." << std::endl;
+//     if(MyNum == 124)
+//       std::cout << "Jet does not have any parents, out of the loop!" << std::endl;
+//   }
+// }
+
+// void HiInclusiveJetSubstructure::ClusterConstituents(std::vector<fastjet::PseudoJet> particles, Bool_t recoLevel){
+//   double jet_radius_ca = 1.0;
+//   fastjet::JetDefinition jet_def(fastjet::genkt_algorithm,jet_radius_ca,0,static_cast<fastjet::RecombinationScheme>(0), fastjet::Best);
+  
+// }
 
 //maybe there is a more elegant way than the one below for matching...
 void HiInclusiveJetSubstructure::RecoTruthSplitMatching(std::vector<fastjet::PseudoJet> &constituents_level1, fastjet::PseudoJet &hardest_level2, bool *bool_array, int *hardest_level1_split){

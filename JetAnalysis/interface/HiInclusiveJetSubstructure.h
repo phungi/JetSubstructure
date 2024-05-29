@@ -147,6 +147,8 @@ private:
 
   //Systematics variables
   double pfChargedCandidateEnergyScale_;
+  double pfGammaCandidateEnergyScale_;
+  double pfNeutralCandidateEnergyScale_;
   bool doTrackVariation_;
 
 
