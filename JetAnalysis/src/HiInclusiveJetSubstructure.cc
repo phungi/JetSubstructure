@@ -137,7 +137,7 @@ HiInclusiveJetSubstructure::HiInclusiveJetSubstructure(const edm::ParameterSet& 
 
   doSubEvent_ = 0;
   doChargedConstOnly_ = iConfig.getUntrackedParameter<bool>("doChargedConstOnly",0);
-  doTrackVariation_ = -1;
+  TrackVariation_ = -1;
   pfChargedCandidateEnergyScale_ = -1;
   pfNeutralCandidateEnergyScale_ = -1;
   pfGammaCandidateEnergyScale_ = -1;
@@ -145,7 +145,7 @@ HiInclusiveJetSubstructure::HiInclusiveJetSubstructure(const edm::ParameterSet& 
     pfChargedCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfChargedEnergyScaleVar",1.);
     pfNeutralCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfNeutralEnergyScaleVar",1.);
     pfGammaCandidateEnergyScale_ = iConfig.getUntrackedParameter<double>("pfGammaEnergyScaleVar",1.);
-    doTrackVariation_ = iConfig.getUntrackedParameter<bool>("doTrackVariation",false);
+    TrackVariation_ = iConfig.getUntrackedParameter<double>("TrackVariation",0.);
     genPtMin_ = iConfig.getUntrackedParameter<double>("genPtMin",10);
     doSubEvent_ = iConfig.getUntrackedParameter<bool>("doSubEvent",0);
     doSubjetPurity = iConfig.getUntrackedParameter<bool>("doSubjetPurity",0);
@@ -162,7 +162,8 @@ void HiInclusiveJetSubstructure::beginRun(const edm::Run& run, const edm::EventS
 
 void HiInclusiveJetSubstructure::beginJob() {
   std::cout << "Running job with systematics" << std::endl;
-  std::cout << "Track efficiency var: " << doTrackVariation_ <<std::endl;
+  std::cout << "Doing Charged only: " << doChargedConstOnly_ << std::endl;
+  std::cout << "Track efficiency var: " << TrackVariation_ << std::endl;
   std::cout << "Charged pfCand 4-mom var: " << pfChargedCandidateEnergyScale_ << std::endl;
   std::cout << "Neutral pfCand 4-mom var: " << pfNeutralCandidateEnergyScale_ << std::endl;
   std::cout << "Photon pfCand 4-mom var: " << pfGammaCandidateEnergyScale_ << std::endl;
@@ -416,7 +417,8 @@ void HiInclusiveJetSubstructure::analyze(const Event& iEvent, const EventSetup& 
 //reco::Jet& jet and const reco::GenJet& jet - can replace the two IterDec with one using a template? 
 void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, double groom_combine, const reco::Jet& jet, fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2)
 {
-  TRandom *r1 = new TRandom3(0);
+  TRandom *rand_track_sel = new TRandom3(0);
+  TRandom *rand_charge_smear = new TRandom3(0);
   Int_t intjet_multi = 0;
   float jet_girth = 0;
 	Int_t nsplit = 0;
@@ -443,6 +445,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
       //if we want only charged constituents and the daughter charge is 0, skip it
       if(doChargedConstOnly_ && (**it).charge()==0) continue;
       double PFE_scale = 1.;
+      double charge_track_smear = 1.;
       //if it is MC, rescale the 4-momentum of the charged particles (we accept only them above) by pfCCES(+-1%)
       if(isMC_){
         if((**it).charge()!=0)
@@ -459,14 +462,20 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
           std::cout << "Not supposed to be here!!!!! What is this particle: " << (**it).pdgId() << std::endl;
         }
       }
-      //vary tracking efficiency - drop ~4% of particles within the jet
-      if(isMC_ && doTrackVariation_){
+      //vary tracking efficiency - drop TrackVariation_% of particles within the jet if using only charged particles
+      if(isMC_ && TrackVariation_ != 0. && doChargedConstOnly_){
         // std::cout << "doing the track variation" << std::endl;
-        if(r1->Uniform(0,1)<0.05) continue;
+        if(rand_track_sel->Uniform(0,1) < TrackVariation_) continue;
+      }
+      //vary tracking efficiency - smear by 10% TrackVariation_% of charged particles within the jet if using inclusive
+      else if(isMC_ && TrackVariation_ != 0. && !doChargedConstOnly_ && (**it).charge()!=0 && rand_track_sel->Uniform(0,1) < TrackVariation_ ){
+        double charge_track_shift = rand_charge_smear->Gaus(0, (**it).energy()*0.1);
+        charge_track_smear = ((**it).energy()-charge_track_shift)/(**it).energy();
+        // std::cout << charge_track_smear << " smear factor for particle with energy " << (**it).energy() << std::endl;
       }
       // std::cout << "Rescaling charged pfCand energy by " << PFE_scale << std::endl;
-      particles.push_back(fastjet::PseudoJet((**it).px()*PFE_scale, (**it).py()*PFE_scale, (**it).pz()*PFE_scale, (**it).energy()*PFE_scale));
-      mypart.reset((**it).px()*PFE_scale, (**it).py()*PFE_scale, (**it).pz()*PFE_scale, (**it).energy()*PFE_scale);
+      particles.push_back(fastjet::PseudoJet((**it).px()*PFE_scale*charge_track_smear, (**it).py()*PFE_scale*charge_track_smear, (**it).pz()*PFE_scale*charge_track_smear, (**it).energy()*PFE_scale*charge_track_smear));
+      mypart.reset((**it).px()*PFE_scale*charge_track_smear, (**it).py()*PFE_scale*charge_track_smear, (**it).pz()*PFE_scale*charge_track_smear, (**it).energy()*PFE_scale*charge_track_smear);
 
       intjet_multi++;
       jet_girth += mypart.perp()*mypart.delta_R(myjet)/myjet.perp();
@@ -486,8 +495,14 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
     // std::cout << "Clustering " << particles.size() << " number of reco particles" << std::endl;
     fastjet::ClusterSequence csiter(particles, jet_def);
     std::vector<fastjet::PseudoJet> output_jets = csiter.inclusive_jets(0);
+    // std::cout << output_jets.size() << " size of output jets" << std::endl;
+
+    // for(size_t h{0}; h < output_jets.size(); ++h){
+      // std::cout << output_jets.at(h).perp() << " pT of output jet " << h << std::endl;
+    // }
     output_jets = sorted_by_pt(output_jets);
     fastjet::PseudoJet jj = output_jets[0];
+    // LookThroughJetSplits(jj,1);
     fastjet::PseudoJet j1;
     fastjet::PseudoJet j2;
     fastjet::PseudoJet highest_splitting;
@@ -633,7 +648,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringGen(double groom_type, dou
 // template<typename T>
 // void HiInclusiveJetSubstructure::TemplateDeclustering(Bool_t recoLevel, double groom_type, T& jet)
 // {
-//   TRandom *r1 = new TRandom3(0);
+//   TRandom *rand_track_sel = new TRandom3(0);
 //   Int_t intjet_multi = 0;
 //   float jet_girth = 0;
 //   Int_t nsplit = 0;
@@ -663,7 +678,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringGen(double groom_type, dou
 //       //vary tracking efficiency - drop ~4% of particles within the jet
 //       if(isMC_ && recoLevel && doTrackVariation_){
 //         // std::cout << "doing the track variation" << std::endl;
-//         if(r1->Uniform(0,1)<0.05) continue;
+//         if(rand_track_sel->Uniform(0,1)<0.05) continue;
 //       }
 //       // std::cout << "Rescaling charged pfCand energy by " << PFE_scale << std::endl;
 //       particles.push_back(fastjet::PseudoJet((**it).px()*PFE_scale, (**it).py()*PFE_scale, (**it).pz()*PFE_scale, (**it).energy()*PFE_scale));
@@ -811,6 +826,23 @@ int HiInclusiveJetSubstructure::getPFJetMuon(const pat::Jet& pfJet, const reco::
   }
 
   return pfMuonIndex;
+}
+
+void HiInclusiveJetSubstructure::LookThroughJetSplits(fastjet::PseudoJet jj, int i=1){
+  fastjet::PseudoJet j1;
+  fastjet::PseudoJet j2;
+  if(i==1)
+    std::cout << "primary" << std::endl;
+  else
+    std::cout << "secondary" << std::endl;
+
+  if(jj.has_parents(j1,j2)){
+    // jj.has_parents(j1,j2);
+    // std::cout << "here" << std::endl;
+    
+    LookThroughJetSplits(j2, 2);
+    LookThroughJetSplits(j1, 1);
+  }
 }
 
 

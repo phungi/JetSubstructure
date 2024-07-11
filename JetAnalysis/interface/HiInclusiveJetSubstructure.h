@@ -63,7 +63,7 @@ private:
   void RecoTruthSplitMatching(std::vector<fastjet::PseudoJet> &constituents_level1, fastjet::PseudoJet &hardest_level2, bool *bool_array, int *hardest_level1_split);
   void TruthRecoRecoTruthMatching();
   int getPFJetMuon(const pat::Jet& pfJet, const reco::PFCandidateCollection *pfCandidateColl);
-
+  void LookThroughJetSplits(fastjet::PseudoJet jj, int i);
   double getPtRel(const reco::PFCandidate& lep, const pat::Jet& jet );
 
   void saveDaughters( const reco::GenParticle & gen);
@@ -149,7 +149,7 @@ private:
   double pfChargedCandidateEnergyScale_;
   double pfGammaCandidateEnergyScale_;
   double pfNeutralCandidateEnergyScale_;
-  bool doTrackVariation_;
+  double TrackVariation_;
 
 
   TTree *t;
