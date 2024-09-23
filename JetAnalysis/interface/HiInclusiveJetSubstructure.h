@@ -8,7 +8,7 @@
 
 // ROOT headers
 #include "TTree.h"
-
+#include "TH2.h"
 // user include files
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "DataFormats/PatCandidates/interface/Jet.h"
@@ -59,7 +59,7 @@ private:
 
   void IterativeDeclusteringRec(double groom_type, double groom_combine, const reco::Jet& jet,    fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2);
   void IterativeDeclusteringGen(double groom_type, double groom_combine, const reco::GenJet& jet, fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2);
-  
+  float ReadJetAsymmMap(float eta, float phi, TH2F Asymm_map);
   void RecoTruthSplitMatching(std::vector<fastjet::PseudoJet> &constituents_level1, fastjet::PseudoJet &hardest_level2, bool *bool_array, int *hardest_level1_split);
   void TruthRecoRecoTruthMatching();
   int getPFJetMuon(const pat::Jet& pfJet, const reco::PFCandidateCollection *pfCandidateColl);
@@ -73,6 +73,7 @@ private:
   void analyzeRefSubjets(const reco::GenJet& jet);
   void analyzeGenSubjets(const reco::GenJet& jet);
   // float getAboveCharmThresh(reco::TrackRefVector& selTracks, const reco::TrackIPTagInfo& ipData, int sigOrVal);
+
 
   edm::InputTag   jetTagLabel_;
   edm::EDGetTokenT<std::vector<reco::Vertex> >       vtxTag_;
@@ -102,6 +103,8 @@ private:
 
   std::vector<float> usedStringPts;
 
+  TH2F *Asymm_map_;
+
   /// verbose ?
   bool verbose_;
   bool doMatch_;
@@ -113,6 +116,9 @@ private:
   bool fillGenJets_;
   bool useQuality_;
   std::string trackQuality_;
+
+  bool doPrimaryLJPReco_;
+  bool doPrimaryLJPTruth_;
 
   bool doChargedConstOnly_;
   bool doHardestSplitMatching_;
@@ -146,10 +152,13 @@ private:
 
 
   //Systematics variables
+  bool doNaiveNeuPFScaling_;
+  bool doRatioNeuPFScaling_;
   double pfChargedCandidateEnergyScale_;
   double pfGammaCandidateEnergyScale_;
   double pfNeutralCandidateEnergyScale_;
   double TrackVariation_;
+  bool pfNeutralSmear_;
 
 
   TTree *t;
@@ -181,6 +190,7 @@ private:
     float vx, vy, vz;
 
     float rawpt[MAXJETS];
+    float jtrawE[MAXJETS];
     float jtpt[MAXJETS];
     float jteta[MAXJETS];
     float jtphi[MAXJETS];
@@ -211,9 +221,19 @@ private:
     // float jtdyn_theta[MAXJETS];
     float jtdyn_deltaR[MAXJETS];
     float jtdyn_kt[MAXJETS];
+    float jtdyn_eta[MAXJETS];
+    float jtdyn_phi[MAXJETS];
     float jtdyn_z[MAXJETS];
     int jt_intjet_multi[MAXJETS];
     float jt_girth[MAXJETS];
+    float jt_girth_new[MAXJETS];
+    float jt_thrust[MAXJETS];
+    float jt_LHA[MAXJETS];
+    float jt_pTD[MAXJETS];
+    std::vector<std::vector<float>> jt_PLJPkT;
+    std::vector<std::vector<float>> jt_PLJPdR;
+    std::vector<std::vector<float>> jt_PLJPeta;
+    std::vector<std::vector<float>> jt_PLJPphi;
 
     std::vector<std::vector<float>> jtSubJetPt;
     std::vector<std::vector<float>> jtSubJetEta;
@@ -247,7 +267,50 @@ private:
     std::vector<std::vector<float>> jtSDConstituentsM;
 
 
+    float trackMax[MAXJETS] = {0};
+    float trackSum[MAXJETS] = {0};
+    int trackN[MAXJETS] = {0};
 
+    float chargedMax[MAXJETS] = {0};
+    float chargedSum[MAXJETS] = {0};
+    int chargedN[MAXJETS] = {0};
+
+    float h_HFMax[MAXJETS] = {0};
+    float h_HFSum[MAXJETS] = {0};
+    int h_HFN[MAXJETS] = {0};
+
+    float eg_HFMax[MAXJETS] = {0};
+    float eg_HFSum[MAXJETS] = {0};
+    int eg_HFN[MAXJETS] = {0};
+
+    float photonMax[MAXJETS] = {0};
+    float photonSum[MAXJETS] = {0};
+    int photonN[MAXJETS] = {0};
+
+    float trackHardSum[MAXJETS] = {0};
+    float chargedHardSum[MAXJETS] = {0};
+    float photonHardSum[MAXJETS] = {0};
+
+    int trackHardN[MAXJETS] = {0};
+    int chargedHardN[MAXJETS] = {0};
+    int photonHardN[MAXJETS] = {0};
+
+    float neutralMax[MAXJETS] = {0};
+    float neutralSum[MAXJETS] = {0};
+    int neutralN[MAXJETS] = {0};
+
+    float eMax[MAXJETS] = {0};
+    float eSum[MAXJETS] = {0};
+    int eN[MAXJETS] = {0};
+
+    float muMax[MAXJETS] = {0};
+    float muSum[MAXJETS] = {0};
+    int muN[MAXJETS] = {0};
+
+    float genChargedSum[MAXJETS] = {0};
+    float genHardSum[MAXJETS] = {0};
+    float signalChargedSum[MAXJETS] = {0};
+    float signalHardSum[MAXJETS] = {0};
     // Update by Raghav, modified to take it from the towers
     float hcalSum[MAXJETS];
     float ecalSum[MAXJETS];
@@ -388,9 +451,20 @@ private:
     // float refdyn_theta[MAXJETS];
     float refdyn_deltaR[MAXJETS];
     float refdyn_kt[MAXJETS];
+    float refdyn_eta[MAXJETS];
+    float refdyn_phi[MAXJETS];
     float refdyn_z[MAXJETS];
     int ref_intjet_multi[MAXJETS];
     float ref_girth[MAXJETS];
+    float ref_girth_new[MAXJETS];
+    float ref_thrust[MAXJETS];
+    float ref_LHA[MAXJETS];
+    float ref_pTD[MAXJETS];
+    std::vector<std::vector<float>> ref_PLJPkT = {};
+    std::vector<std::vector<float>> ref_PLJPdR = {};
+    std::vector<std::vector<float>> ref_PLJPeta = {};
+    std::vector<std::vector<float>> ref_PLJPphi = {};
+    std::vector<float> ref_test_vec = {};
 
     float refsub11[MAXJETS];
     float refsub12[MAXJETS];

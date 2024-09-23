@@ -40,5 +40,10 @@ inclusiveJetAnalyzer = cms.EDAnalyzer("HiInclusiveJetSubstructure",
                                       TrackVariation = cms.untracked.double(0.),
                                       pfChargedEnergyScaleVar = cms.untracked.double(1.),
                                       pfNeutralEnergyScaleVar = cms.untracked.double(1.),
-                                      pfGammaEnergyScaleVar = cms.untracked.double(1.)
+                                      pfGammaEnergyScaleVar = cms.untracked.double(1.),
+                                      pfNeutralSmear = cms.untracked.bool(False),
+                                      doPrimaryLJPReco = cms.untracked.bool(False),
+                                      doPrimaryLJPTruth = cms.untracked.bool(False),
+                                      doNaiveNeuPFScaling = cms.untracked.bool(False),
+                                      doRatioNeuPFScaling = cms.untracked.bool(True)
                                       )
