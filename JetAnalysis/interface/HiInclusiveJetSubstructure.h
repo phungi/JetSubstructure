@@ -60,6 +60,7 @@ private:
   void IterativeDeclusteringRec(double groom_type, double groom_combine, const reco::Jet& jet,    fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2);
   void IterativeDeclusteringGen(double groom_type, double groom_combine, const reco::GenJet& jet, fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2);
   float ReadJetAsymmMap(float eta, float phi, TH2F Asymm_map);
+  std::vector<float> BinBoundsAsymmMap(float eta, float phi, TH2F Asymm_map);
   void RecoTruthSplitMatching(std::vector<fastjet::PseudoJet> &constituents_level1, fastjet::PseudoJet &hardest_level2, bool *bool_array, int *hardest_level1_split);
   void TruthRecoRecoTruthMatching();
   int getPFJetMuon(const pat::Jet& pfJet, const reco::PFCandidateCollection *pfCandidateColl);
@@ -72,6 +73,7 @@ private:
   int  getGroomedGenJetIndex(const reco::GenJet& jet) const;
   void analyzeRefSubjets(const reco::GenJet& jet);
   void analyzeGenSubjets(const reco::GenJet& jet);
+  void incrementJetID(const reco::Candidate& it);
   // float getAboveCharmThresh(reco::TrackRefVector& selTracks, const reco::TrackIPTagInfo& ipData, int sigOrVal);
 
 
@@ -154,6 +156,8 @@ private:
   //Systematics variables
   bool doNaiveNeuPFScaling_;
   bool doRatioNeuPFScaling_;
+  bool doPeripheralNeuPFScaling_;
+  bool doCompensatoryNeuPFScaling_;
   double pfChargedCandidateEnergyScale_;
   double pfGammaCandidateEnergyScale_;
   double pfNeutralCandidateEnergyScale_;
@@ -189,6 +193,7 @@ private:
     int lumi;
     float vx, vy, vz;
 
+    float jtMapPt[MAXJETS] = {0};
     float rawpt[MAXJETS];
     float jtrawE[MAXJETS];
     float jtpt[MAXJETS];

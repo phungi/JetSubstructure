@@ -45,5 +45,8 @@ inclusiveJetAnalyzer = cms.EDAnalyzer("HiInclusiveJetSubstructure",
                                       doPrimaryLJPReco = cms.untracked.bool(False),
                                       doPrimaryLJPTruth = cms.untracked.bool(False),
                                       doNaiveNeuPFScaling = cms.untracked.bool(False),
-                                      doRatioNeuPFScaling = cms.untracked.bool(True)
+                                      doRatioNeuPFScaling = cms.untracked.bool(False),
+                                      #peripheral scaling is not working in case we have only core neutrals!
+                                      doPeripheralNeuPFScaling = cms.untracked.bool(False),
+                                      doCompensatoryNeuPFScaling = cms.untracked.bool(True)
                                       )

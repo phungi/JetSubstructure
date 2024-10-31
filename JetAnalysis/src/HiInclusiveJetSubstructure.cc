@@ -146,6 +146,8 @@ HiInclusiveJetSubstructure::HiInclusiveJetSubstructure(const edm::ParameterSet& 
   pfNeutralSmear_ = false;
   doNaiveNeuPFScaling_ = false;
   doRatioNeuPFScaling_ = false;
+  doPeripheralNeuPFScaling_ = false;
+  doCompensatoryNeuPFScaling_ = false;
 
   doPrimaryLJPReco_ = iConfig.getUntrackedParameter<bool>("doPrimaryLJPReco", false);
   if(isMC_){
@@ -156,7 +158,8 @@ HiInclusiveJetSubstructure::HiInclusiveJetSubstructure(const edm::ParameterSet& 
     pfNeutralSmear_ = iConfig.getUntrackedParameter<bool>("pfNeutralSmear", false);
     doNaiveNeuPFScaling_ = iConfig.getUntrackedParameter<bool>("doNaiveNeuPFScaling", false);
     doRatioNeuPFScaling_ = iConfig.getUntrackedParameter<bool>("doRatioNeuPFScaling", false);
-
+    doPeripheralNeuPFScaling_ = iConfig.getUntrackedParameter<bool>("doPeripheralNeuPFScaling", false);
+    doCompensatoryNeuPFScaling_ = iConfig.getUntrackedParameter<bool>("doCompensatoryNeuPFScaling", false);
     TrackVariation_ = iConfig.getUntrackedParameter<double>("TrackVariation",0.);
 
     genPtMin_ = iConfig.getUntrackedParameter<double>("genPtMin",10);
@@ -433,9 +436,10 @@ void HiInclusiveJetSubstructure::analyze(const Event& iEvent, const EventSetup& 
     if(j==0){ 
       jets_.triggerJetInAcceptance = true;
     }
-   
+
     jets_.rawpt[jets_.nref] = jet.correctedJet("Uncorrected").pt();
     jets_.jtrawE[jets_.nref] = jet.correctedJet("Uncorrected").energy();
+    // jets_.jtMapPt[jets_.nref] = jet.pt()*(1+ReadJetAsymmMap(jet.eta(), jet.phi(), *Asymm_map_));
     jets_.jtpt[jets_.nref] = jet.pt();
     jets_.jteta[jets_.nref] = jet.eta();
     jets_.jtphi[jets_.nref] = jet.phi();
@@ -511,7 +515,7 @@ void HiInclusiveJetSubstructure::analyze(const Event& iEvent, const EventSetup& 
         // if(!(jets_.jtdyn_isClosestToTruth[jets_.nref] && jets_.refdyn_isClosestToReco[jets_.nref])){
         //   std::cout << "Failed matching " << jets_.jtdyn_isClosestToTruth[jets_.nref] << " " <<  jets_.refdyn_isClosestToReco[jets_.nref] << std::endl;
         //   std::cout << "dR=" << jets_.jtdyn_deltaR[jets_.nref] << " kt=" << jets_.jtdyn_kt[jets_.nref] << " truth jtpt=" << jets_.refpt[jets_.nref] << std::endl;
-          
+
         //   if(jets_.jtdyn_deltaR[jets_.nref] > 0.175 && jets_.jtdyn_deltaR[jets_.nref] < 0.2 && jets_.jtdyn_kt[jets_.nref]>2 && jets_.jtdyn_kt[jets_.nref]<30 && jets_.jtpt[jets_.nref]>150 ){
         //     std::cout << "The above jet satisfies reco selection for purity" << std::endl;
         //     std::cout << "dR=" << jets_.jtdyn_deltaR[jets_.nref] << " kt=" << jets_.jtdyn_kt[jets_.nref] << " truth jtpt=" << jets_.refpt[jets_.nref] << std::endl;
@@ -546,58 +550,26 @@ void HiInclusiveJetSubstructure::analyze(const Event& iEvent, const EventSetup& 
 //reco::Jet& jet and const reco::GenJet& jet - can replace the two IterDec with one using a template? 
 void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, double groom_combine, const reco::Jet& jet, fastjet::PseudoJet *sub1, fastjet::PseudoJet *sub2)
 {
-  if(doHiJetID_){
-        jets_.muMax[jets_.nref] = 0;
-        jets_.muSum[jets_.nref] = 0;
-        jets_.muN[jets_.nref] = 0;
+  std::cout << "new jet" << std::endl;
+  Double_t map_Corrected_jtpt = jets_.rawpt[jets_.nref];
+  Double_t assymDelta_jetpt = 0;
+  //take the bin limits of the jet axis in the asymmetry map for neutrals 
+  std::vector <float> jetBoundsInMap = {};
+  if(doPeripheralNeuPFScaling_ || doCompensatoryNeuPFScaling_){
+    jetBoundsInMap = BinBoundsAsymmMap(jet.eta(), jet.phi(), *Asymm_map_);
+    map_Corrected_jtpt = jets_.rawpt[jets_.nref]*(1+ReadJetAsymmMap(jet.eta(), jet.phi(), *Asymm_map_));
+    assymDelta_jetpt = map_Corrected_jtpt - jets_.rawpt[jets_.nref];
+    std::cout << assymDelta_jetpt << " difference in jet pT" << std::endl;
+  }
 
-        jets_.eg_HFMax[jets_.nref] = 0;
-        jets_.eg_HFSum[jets_.nref] = 0;
-        jets_.eg_HFN[jets_.nref] = 0;
-
-        jets_.h_HFMax[jets_.nref] = 0;
-        jets_.h_HFSum[jets_.nref] = 0;
-        jets_.h_HFN[jets_.nref] = 0;
-
-        jets_.eMax[jets_.nref] = 0;
-        jets_.eSum[jets_.nref] = 0;
-        jets_.eN[jets_.nref] = 0;
-
-        jets_.neutralMax[jets_.nref] = 0;
-        jets_.neutralSum[jets_.nref] = 0;
-        jets_.neutralN[jets_.nref] = 0;
-
-
-        jets_.photonMax[jets_.nref] = 0;
-        jets_.photonSum[jets_.nref] = 0;
-        jets_.photonN[jets_.nref] = 0;
-        jets_.photonHardSum[jets_.nref] = 0;
-        jets_.photonHardN[jets_.nref] = 0;
-
-        jets_.chargedMax[jets_.nref] = 0;
-        jets_.chargedSum[jets_.nref] = 0;
-        jets_.chargedN[jets_.nref] = 0;
-        jets_.chargedHardSum[jets_.nref] = 0;
-        jets_.chargedHardN[jets_.nref] = 0;
-
-        jets_.trackMax[jets_.nref] = 0;
-        jets_.trackSum[jets_.nref] = 0;
-        jets_.trackN[jets_.nref] = 0;
-        jets_.trackHardSum[jets_.nref] = 0;
-        jets_.trackHardN[jets_.nref] = 0;
-
-        jets_.genChargedSum[jets_.nref] = 0;
-        jets_.genHardSum[jets_.nref] = 0;
-
-        jets_.signalChargedSum[jets_.nref] = 0;
-        jets_.signalHardSum[jets_.nref] = 0;
-      }
+  // random number generators for different smearing scenarios (systematics)
   TRandom *rand_track_sel = new TRandom3(0);
   TRandom *rand_charge_smear = new TRandom3(0);
   TRandom *rand_hcal_y_smear = new TRandom3(0);
   TRandom *rand_hcal_phi_smear = new TRandom3(0);
   std::vector<Int_t> posDonor = {};
   std::vector<Int_t> posAcceptor = {};
+  // generalised angularities
   Int_t intjet_multi = 0;
   float jet_girth = 0;
   float jet_girth_new = 0;
@@ -608,7 +580,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
   std::vector<float> jet_PLJPdR = {};
   std::vector<float> jet_PLJPeta = {};
   std::vector<float> jet_PLJPphi = {};
-	Int_t nsplit = 0;
+  Int_t nsplit = 0;
   double dyn_kt = std::numeric_limits<double>::min();
   Int_t dyn_split = 0;
   double z = 0;
@@ -621,118 +593,93 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
   fastjet::JetDefinition jet_def(fastjet::genkt_algorithm,jet_radius_ca,0,static_cast<fastjet::RecombinationScheme>(0), fastjet::Best);
   fastjet::PseudoJet myjet;
   fastjet::PseudoJet mypart;
-
-  // fastjet::PseudoJet testpart;
-  // testpart.reset_PtYPhiM(15, 1.7, 2.31, 0.00005);
-  // std::cout << testpart.e() << " energy of test particle, pz=" << testpart.pz() << " pT=" << testpart.perp() << std::endl;
-  // testpart.reset_PtYPhiM(15, 1.7+0.10, 2.31+0.09, 0.00005);
-  // std::cout << testpart.e() << " energy of test particle correction, pz=" << testpart.pz() << " pT=" << testpart.perp() << std::endl;
-  // testpart.reset_PtYPhiM(15, 1.7+0.30, 2.31+0.09, 0.00005);
-  // std::cout << testpart.e() << " energy of test particle correction, pz=" << testpart.pz() << " pT=" << testpart.perp() << std::endl;
-  // std::cout << testpart.phi() << " should be pi/2" << std::endl;
-
   myjet.reset(jet.p4().px(),jet.p4().py(),jet.p4().pz(),jet.p4().e());
   // Reclustering jet constituents with new algorithm
+
   try{
     std::vector<fastjet::PseudoJet> particles = {};
     auto daughters = jet.getJetConstituents();
-        // std::cout << "Number of pfCand " << pfCandidates.size() << std::endl;
-        // Geometrical PF Candidate x Jet Constituent Matching - Added by Bharadwaj - Apr 2023
-        // poor man's matching, someone fix please
-    // std::vector<int> vec_jet_consituent_charge;
     Int_t count_it = 0;
     double JetNeutralEnergy = 0.;
+
     //scaling of neutral candidates using an (eta,phi) map from Mikko 
-    if(isMC_ && doRatioNeuPFScaling_){
+    // loop over the neutral candidates and scale the core ones only (within the jet axis HCal granularity)
+    float assymDelta_corePtChange = 0;
+    float assymSum_peripheralChange = 0;
+    float assymSum_allNeuChange = 0;
+    if(isMC_ && (doPeripheralNeuPFScaling_ or doCompensatoryNeuPFScaling_)){
+      fastjet::PseudoJet coreSum;
+      fastjet::PseudoJet coreSum_modified;
+      fastjet::PseudoJet peripheralSum;
+      fastjet::PseudoJet peripheralSum_modified;
+      fastjet::PseudoJet totalSum;
+      fastjet::PseudoJet totalSum_modified;
+
+      coreSum.reset(0,0,0,0);
+      coreSum_modified.reset(0,0,0,0);
+      // std::cout << "before total modification calculation" << std::endl;
       for(auto it = daughters.begin(); it!=daughters.end(); ++it){
         Int_t abspdgId = abs((**it).pdgId());
-        if(abspdgId==130)
-          JetNeutralEnergy += (**it).energy();
+        //if neutral
+        if(abspdgId!=130) continue;
+        // for(auto it2 = it; it2!=daughters.end(); ++it2){
+        //   if(it2!=it && (**it2).pdgId()==130){
+        //     fastjet::PseudoJet one;
+        //     one.reset((**it).px(), (**it).py(), (**it).pz(), (**it).energy());
+        //     fastjet::PseudoJet two;
+        //     two.reset((**it2).px(), (**it2).py(), (**it2).pz(), (**it2).energy());
+        //     float dRonetwo = one.delta_R(two);
+        //     // if(dRonetwo<0.087){
+        //       std::cout << "Below 0.087 between neutrals: " << dRonetwo << std::endl;
+        //     // }
+        //   }
+        // }
+        fastjet::PseudoJet pseudoNeutral;
+        fastjet::PseudoJet pseudoNeutral_modified;
+        float neutralMapValue = ReadJetAsymmMap((**it).eta(), (**it).phi(), *Asymm_map_);
+        //if the modification is negative, set to 0.01 so we don't flip the momentum of the particle
+        // if(neutralMapValue < 0.) neutralMapValue = 0.01;
+        pseudoNeutral.reset((**it).px(), (**it).py(), (**it).pz(), (**it).energy());
+        pseudoNeutral_modified.reset((**it).px()*(1.+neutralMapValue), (**it).py()*(1.+neutralMapValue), (**it).pz()*(1.+neutralMapValue), (**it).energy()*(1.+neutralMapValue));
+        totalSum = totalSum + pseudoNeutral;
+        totalSum_modified = totalSum_modified + pseudoNeutral_modified;
+        //if particle is in the same tower as the jet axis, add to the core, if not, add to sum of peripherals
+        //don't modify the particles here, do afterwards, just record the modification amplitude
+        if((**it).eta() > jetBoundsInMap.at(0) && (**it).eta() > jetBoundsInMap.at(0) && (**it).eta() < jetBoundsInMap.at(1) && (**it).phi() > jetBoundsInMap.at(2) && (**it).phi() < jetBoundsInMap.at(3)){
+          coreSum = coreSum + pseudoNeutral;
+          coreSum_modified = coreSum_modified + pseudoNeutral_modified;
+          // std::cout << "Core neutral " << std::endl;
+        }
+        else{ //if not in the same tower as jet axis, add the change in pT to sum of peripherals
+          peripheralSum = peripheralSum + pseudoNeutral;
+          peripheralSum_modified = peripheralSum_modified + pseudoNeutral_modified;
+          // std::cout << "Peripheral neutral " << std::endl;
+        }
       }
+
+      // std::cout << "after total modification calculation" << std::endl;
+      // totalSum = coreSum + peripheralSum;
+      // totalSum_modified = coreSum_modified + peripheralSum_modified;
+      assymDelta_corePtChange = coreSum_modified.pt() - coreSum.pt();
+      assymSum_peripheralChange = peripheralSum_modified.pt() - peripheralSum.pt();
+      // std::cout << "Energy of neutral changed 4 mom " << (totalSum_modified - totalSum).e() << " and pT=" << (totalSum_modified - totalSum).pt() << std::endl;
+      assymSum_allNeuChange = (totalSum_modified - totalSum).pt();
+      //negate total momentum change if the energy of the 4-vector difference is negative
+      if((totalSum_modified - totalSum).e() < 0) assymSum_allNeuChange = - assymSum_allNeuChange;
     }
+    //the change in the peripheral neutrals must compensate for the difference coming from core
+    float peripheralNeutralChange = assymDelta_jetpt - assymDelta_corePtChange; 
+    double jetEnergyDifferenceOutsideCore = 0;
     double JetNeutralEnergyFraction = JetNeutralEnergy/jets_.jtrawE[jets_.nref];
     // std::cout << jet.pt() << " " << jets_.jtpt[jets_.nref] << " jet pT " << jets_.jtrawE[jets_.nref] << " raw jet E" << std::endl;
-    // std::cout << " ratio " << JetNeutralEnergyFraction << std::endl; 
+    // std::cout << " ratio " << JetNeutralEnergyFraction << std::endl;
+    // std::cout << "PFE shift below" << std::endl;
     for(auto it = daughters.begin(); it!=daughters.end(); ++it){
       //if we want only charged constituents and the daughter charge is 0, skip it
-      //hide all this jetID stuff in a function 
+      //hide all this jetID stuff in a function (hooraaay?)
       if(doHiJetID_){
-        if((**it).charge()!=0){
-          // reco::Track const& track = (**it).pseudoTrack();
-          TrackRef trk = (**it).get<TrackRef>();
-          if(trk.isNonnull()){
-          // if(!useQuality_ || (useQuality_ && reco::TrackBase::qualityByName(trackQuality_))){
-            double ptcand = trk->pt();
-            jets_.trackSum[jets_.nref] += ptcand;
-            jets_.trackN[jets_.nref] += 1;
-
-            if (ptcand > hardPtMin_) {
-              jets_.trackHardSum[jets_.nref] += ptcand;
-              jets_.trackHardN[jets_.nref] += 1;
-            }
-            if (ptcand > jets_.trackMax[jets_.nref])
-              jets_.trackMax[jets_.nref] = ptcand;
-          }
-        }
-        Double_t ecand = (**it).energy();
-        // std::cout << (**it).pt() << " " << (**it).energy() << " pt and E" << std::endl;
-        Int_t abspdgId = abs((**it).pdgId());
-        if(abspdgId < 0) std::cout << "Negative pdg ID, what do?? " << (**it).pdgId() << std::endl;
-        else if(abspdgId==22){
-          jets_.photonSum[jets_.nref] += ecand;
-          jets_.photonN[jets_.nref] += 1;
-          if (ecand > hardPtMin_) {
-            jets_.photonHardSum[jets_.nref] += ecand;
-            jets_.photonHardN[jets_.nref] += 1;
-          }
-          if (ecand > jets_.photonMax[jets_.nref])
-            jets_.photonMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==130){
-          jets_.neutralSum[jets_.nref] += ecand;
-          jets_.neutralN[jets_.nref] += 1;
-          if (ecand > jets_.neutralMax[jets_.nref])
-            jets_.neutralMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==211){
-          jets_.chargedSum[jets_.nref] += ecand;
-          jets_.chargedN[jets_.nref] += 1;
-          if (ecand > hardPtMin_) {
-            jets_.chargedHardSum[jets_.nref] += ecand;
-            jets_.chargedHardN[jets_.nref] += 1;
-          }
-          if (ecand > jets_.chargedMax[jets_.nref])
-            jets_.chargedMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==11){
-          jets_.eSum[jets_.nref] += ecand;
-          jets_.eN[jets_.nref] += 1;
-          if (ecand > jets_.eMax[jets_.nref])
-            jets_.eMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==13){
-          jets_.muSum[jets_.nref] += ecand;
-          jets_.muN[jets_.nref] += 1;
-          if (ecand > jets_.muMax[jets_.nref])
-            jets_.muMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==1){
-          jets_.h_HFSum[jets_.nref] += ecand;
-          jets_.h_HFN[jets_.nref] += 1;
-          if (ecand > jets_.h_HFMax[jets_.nref])
-            jets_.h_HFMax[jets_.nref] = ecand;
-        }
-        else if(abspdgId==2){
-          jets_.eg_HFSum[jets_.nref] += ecand;
-          jets_.eg_HFN[jets_.nref] += 1;
-          if (ecand > jets_.eg_HFMax[jets_.nref])
-            jets_.eg_HFMax[jets_.nref] = ecand;
-        }
-        else{
-          std::cout << " something else???" << abspdgId << std::endl;
-        }
+        incrementJetID(**it);
       }
-
       if(doChargedConstOnly_ && (**it).charge()==0) continue;
       double PFE_scale = 1.;
       double charge_track_smear = 1.;
@@ -748,7 +695,30 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
         }
         else if((**it).pdgId()==130){
           PFE_scale = pfNeutralCandidateEnergyScale_;
+          // if(doCustomNeuPFScaling_){
+          //   double map_value = ReadJetAsymmMap((**it).eta(), (**it).phi(), *Asymm_map_);
+          // }
+          //treat all neutrals equally in order to compensate for jet asymmetry (no matter if in core or not)
+          if(doCompensatoryNeuPFScaling_){
+            double map_value = ReadJetAsymmMap((**it).eta(), (**it).phi(), *Asymm_map_);
+            double particle_dp = map_value*(**it).pt();
+            std::cout << "Fraction of excess momentum " << assymDelta_jetpt << " going into particle " << particle_dp/assymSum_allNeuChange << std::endl;
+            std::cout << "Total sum in changed neutrals: " << assymSum_allNeuChange << std::endl;
+            map_value = map_value*assymDelta_jetpt/assymSum_allNeuChange;
+            // if(map_value < -1.) map_value = -0.99;
+            PFE_scale = 1 + map_value;
+            std::cout << "Neutral scaling value " << PFE_scale << " for particle of pT=" << (**it).pt() << std::endl;
+          }
+          if(doPeripheralNeuPFScaling_){
+            double map_value = ReadJetAsymmMap((**it).eta(), (**it).phi(), *Asymm_map_);
+            //factor of 10 due to jet core tower ratio to whole jet (Mikko suggested, but is this not effectively energy fraction as below?)
+            map_value = 10*map_value*peripheralNeutralChange/assymSum_peripheralChange;
+            // if(map_value < -1.) map_value = -0.99;
+            // std::cout << map_value << " map value for neutral at eta-phi = " << (**it).eta() << " " << (**it).phi() << std::endl;
+            PFE_scale = 1 + map_value;
+          }
           if(doRatioNeuPFScaling_){
+            // std::cout << "Distance of neutral to jet core:" << 
             double map_value = ReadJetAsymmMap((**it).eta(), (**it).phi(), *Asymm_map_);
             //factor of 10 due to jet core tower ratio to whole jet (Mikko suggested, but is this not effectively energy fraction as below?)
             map_value = map_value*10;
@@ -786,7 +756,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
       else if(isMC_ && TrackVariation_ != 0. && !doChargedConstOnly_ && (**it).charge()!=0 && rand_track_sel->Uniform(0,1) < TrackVariation_ ){
         double closest_to_particle = 0.087;
         fastjet::PseudoJet temp_part;
-        temp_part.reset((**it).px(), (**it).py(), (**it).pz(), (**it).energy());;
+        temp_part.reset((**it).px(), (**it).py(), (**it).pz(), (**it).energy());
         Bool_t acceptorCharge = false;
         // int acceptorPos = 0;
         Int_t  count_it2 = 0;
@@ -816,17 +786,32 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
         // std::cout << charge_track_smear << " smear factor for particle with energy " << (**it).energy() << std::endl;
       }
       // std::cout << "Rescaling charged pfCand energy by " << PFE_scale << std::endl;
-      mypart.reset((**it).px()*PFE_scale*charge_track_smear, (**it).py()*PFE_scale*charge_track_smear, (**it).pz()*PFE_scale*charge_track_smear, (**it).energy()*PFE_scale*charge_track_smear);
-      if(isMC_ && pfNeutralSmear_ && (**it).pdgId()==130){
+      mypart.reset((**it).px(), (**it).py(), (**it).pz(), (**it).energy());
+      // using the jet tower term in addition to the neutral particle energy fraction scaling can give to negative factor for neutrals
+      // safety to keep particles positive (negative scaling reverses px,py,pz)
+      if(PFE_scale < 0.){
+        // std::cout << "Neutral scale negative, reset " << PFE_scale << std::endl;
+        PFE_scale = 0.01;
+      }
+      fastjet::PseudoJet copy_mp = mypart;
+      if( isMC_ ) mypart.reset((**it).px()*PFE_scale*charge_track_smear, (**it).py()*PFE_scale*charge_track_smear, (**it).pz()*PFE_scale*charge_track_smear, (**it).energy()*PFE_scale*charge_track_smear);
+      if( isMC_ && pfNeutralSmear_ && (**it).pdgId()==130 ){
         // std::cout << "Old y = " << mypart.rap() << " and eta =" << mypart.eta() << std::endl;
         mypart.reset_PtYPhiM(mypart.perp(), mypart.rap()+Hcal_y_smear, mypart.phi()+Hcal_phi_smear, mypart.m());
         // mypart.reset_PtYPhiM(p, y, phi, m);
         // std::cout << "new y and phi " << mypart.rap() << " and " << mypart.phi() << " perp and m " << mypart.perp() << " " << mypart.m() << std::endl;
 
       }
+      std::cout << "Particle pT change " << mypart.pt() - copy_mp.pt() << " 4-vec diff " << (mypart-copy_mp).pt() << std::endl;
+
+      // if(mypart.delta_R(myjet) < 0.1){
+      //   std::cout << mypart.delta_R(myjet) << " Distance between particle and jet" << std::endl;
+      //   std::cout << "Jet eta phi " << jet.p4().eta() << " " << jet.p4().phi() << std::endl;
+      //   std::cout << "Eta phi for weird neutrals: " << mypart.pseudorapidity() << " " << mypart.phi() << " with ID " << (**it).pdgId() << std::endl;
+      // }
+
       particles.push_back(mypart);
       double frac_dR = mypart.delta_R(myjet)/rParam;
-      // std::cout << rParam << " rParam" << std::endl;
       double frac_pt = mypart.perp()/myjet.perp();
       intjet_multi++;
       jet_girth     += mypart.perp()*mypart.delta_R(myjet)/myjet.perp();
@@ -870,15 +855,20 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
     // std::cout << jets_.eN[jets_.nref] + jets_.photonN[jets_.nref] + jets_.muN[jets_.nref] + jets_.chargedN[jets_.nref] + jets_.neutralN[jets_.nref] << " constituents recorded out of " << particles.size() << std::endl;
     // std::cout << (jets_.eg_HFSum[jets_.nref] + jets_.h_HFSum[jets_.nref] + jets_.eSum[jets_.nref] + jets_.muSum[jets_.nref] + jets_.photonSum[jets_.nref] + jets_.chargedSum[jets_.nref] + jets_.neutralSum[jets_.nref])/jets_.jtrawE[jets_.nref] << " fractional energy" << std::endl;
     // std::cout << "something else above? jet eta " << jets_.jteta[jets_.nref] << std::endl;
-    for(auto itp = particles.begin(); itp!=particles.end(); ++itp){
-      // std::cout << itp_idx << " " << itp->perp() << " in checks" << std::endl;
-      if(itp->perp()==0 and itp!=particles.end()){
-        // std::cout << "removing " << itp_idx << " particle" << std::endl;
-        particles.erase(itp);
-        itp--;
-      }
+
+    // loop again and remove all particles with pT=0 if TrackVariation is being used
+    if(isMC_ and TrackVariation_){
+      for(auto itp = particles.begin(); itp!=particles.end(); ++itp){
+        // std::cout << itp_idx << " " << itp->perp() << " in checks" << std::endl;
+        if(itp->perp()==0 and itp!=particles.end()){
+          // std::cout << "removing " << itp_idx << " particle" << std::endl;
+          particles.erase(itp);
+          itp--;
+        }
       // itp_idx++;
+      }
     }
+    
     // std::cout << "Final length of particle vector " << particles.size() << std::endl;
     // for(size_t p{0}; p < particles.size(); ++p){
     //   std::cout << particles.at(p).perp() << " ";
@@ -904,6 +894,13 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringRec(double groom_type, dou
       jets_.jt_PLJPphi.push_back(jet_PLJPphi);
       throw(123);
     }
+
+    fastjet::PseudoJet sumParticles;
+    sumParticles.reset(0,0,0,0);
+    for(size_t i{0}; i < particles.size(); ++i){
+      sumParticles = sumParticles + particles.at(i);
+    }
+    std::cout << "Modified jet pT vs constituent pT " << map_Corrected_jtpt - sumParticles.pt() << " = " << map_Corrected_jtpt << " - " << sumParticles.pt() << " for jet of eta phi " << jet.eta() << " " << jet.phi() << std::endl;
     // std::cout << "Clustering " << particles.size() << " number of reco particles" << std::endl;
     fastjet::ClusterSequence csiter(particles, jet_def);
     std::vector<fastjet::PseudoJet> output_jets = csiter.inclusive_jets(0);
@@ -1129,8 +1126,8 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringGen(double groom_type, dou
     jets_.ref_pTD[jets_.nref] = jet_pTD;
     jets_.ref_PLJPkT.push_back(jet_PLJPkT);
     jets_.ref_PLJPdR.push_back(jet_PLJPdR);
-      jets_.ref_PLJPeta.push_back(jet_PLJPeta);
-      jets_.ref_PLJPphi.push_back(jet_PLJPphi);
+    jets_.ref_PLJPeta.push_back(jet_PLJPeta);
+    jets_.ref_PLJPphi.push_back(jet_PLJPphi);
   } 
   catch (fastjet::Error) { /*return -1;*/ }
   catch (Int_t MyNum){
@@ -1255,7 +1252,7 @@ void HiInclusiveJetSubstructure::IterativeDeclusteringGen(double groom_type, dou
 // void HiInclusiveJetSubstructure::ClusterConstituents(std::vector<fastjet::PseudoJet> particles, Bool_t recoLevel){
 //   double jet_radius_ca = 1.0;
 //   fastjet::JetDefinition jet_def(fastjet::genkt_algorithm,jet_radius_ca,0,static_cast<fastjet::RecombinationScheme>(0), fastjet::Best);
-  
+
 // }
 
 //maybe there is a more elegant way than the one below for matching...
@@ -1291,8 +1288,17 @@ float HiInclusiveJetSubstructure::ReadJetAsymmMap(float eta, float phi, TH2F Asy
   if( result > high_bound ){
     result = high_bound;
   }
-  // std::cout << "For jet with eta-phi " << eta << " " << phi << " " << "result of " << result << std::endl;
+  // std::cout << "For particle with eta-phi " << eta << " " << phi << " " << "result of " << result << std::endl;
   return result;
+}
+
+std::vector<float> HiInclusiveJetSubstructure::BinBoundsAsymmMap(float eta, float phi, TH2F Asymm_map){
+  std::vector<float> result;
+  float eta_low =  Asymm_map.GetXaxis()->GetBinLowEdge(Asymm_map.GetXaxis()->FindBin(eta));
+  float eta_high =  Asymm_map.GetXaxis()->GetBinLowEdge(Asymm_map.GetXaxis()->FindBin(eta)+1);
+  float phi_low = Asymm_map.GetYaxis()->GetBinLowEdge(Asymm_map.GetYaxis()->FindBin(phi));
+  float phi_high = Asymm_map.GetYaxis()->GetBinLowEdge(Asymm_map.GetYaxis()->FindBin(phi)+1);
+  return result = {eta_low, eta_high, phi_low, phi_high};
 }
 
 void HiInclusiveJetSubstructure::TruthRecoRecoTruthMatching(){
@@ -1349,7 +1355,7 @@ void HiInclusiveJetSubstructure::LookThroughJetSplits(fastjet::PseudoJet jj, int
   if(jj.has_parents(j1,j2)){
     // jj.has_parents(j1,j2);
     // std::cout << "here" << std::endl;
-    
+
     LookThroughJetSplits(j2, 2);
     LookThroughJetSplits(j1, 1);
   }
@@ -1511,6 +1517,91 @@ void HiInclusiveJetSubstructure::analyzeGenSubjets(const reco::GenJet& jet) {
   int imatch = getGroomedGenJetIndex(jet);
   double dr = 999.;
 
+}
+
+void HiInclusiveJetSubstructure::incrementJetID(const reco::Candidate& it){
+  if(it.charge()!=0){
+    // reco::Track const& track = (**it).pseudoTrack();
+    TrackRef trk = it.get<TrackRef>();
+    if(trk.isNonnull()){
+    // if(!useQuality_ || (useQuality_ && reco::TrackBase::qualityByName(trackQuality_))){
+      double ptcand = trk->pt();
+      jets_.trackSum[jets_.nref] += ptcand;
+      jets_.trackN[jets_.nref] += 1;
+
+      if (ptcand > hardPtMin_) {
+        jets_.trackHardSum[jets_.nref] += ptcand;
+        jets_.trackHardN[jets_.nref] += 1;
+      }
+      if (ptcand > jets_.trackMax[jets_.nref])
+        jets_.trackMax[jets_.nref] = ptcand;
+    }
+  }
+  Double_t ecand = it.energy();
+  // std::cout << (**it).pt() << " " << (**it).energy() << " pt and E" << std::endl;
+  Int_t abspdgId = abs(it.pdgId());
+  // if(abspdgId < 0) std::cout << "Negative pdg ID, what do?? " << (**it).pdgId() << std::endl;
+  // if photon
+  if( abspdgId == 22 ){
+    jets_.photonSum[jets_.nref] += ecand;
+    jets_.photonN[jets_.nref] += 1;
+    if (ecand > hardPtMin_) {
+      jets_.photonHardSum[jets_.nref] += ecand;
+      jets_.photonHardN[jets_.nref] += 1;
+    }
+    if (ecand > jets_.photonMax[jets_.nref])
+      jets_.photonMax[jets_.nref] = ecand;
+  }
+  // if neutral hadron
+  else if( abspdgId == 130 ){
+    jets_.neutralSum[jets_.nref] += ecand;
+    jets_.neutralN[jets_.nref] += 1;
+    if (ecand > jets_.neutralMax[jets_.nref])
+      jets_.neutralMax[jets_.nref] = ecand;
+  }
+  // if charged hadron
+  else if( abspdgId == 211 ){
+    jets_.chargedSum[jets_.nref] += ecand;
+    jets_.chargedN[jets_.nref] += 1;
+    if (ecand > hardPtMin_) {
+      jets_.chargedHardSum[jets_.nref] += ecand;
+      jets_.chargedHardN[jets_.nref] += 1;
+    }
+    if (ecand > jets_.chargedMax[jets_.nref])
+      jets_.chargedMax[jets_.nref] = ecand;
+  }
+  // electron
+  else if( abspdgId == 11 ){
+    jets_.eSum[jets_.nref] += ecand;
+    jets_.eN[jets_.nref] += 1;
+    if (ecand > jets_.eMax[jets_.nref])
+      jets_.eMax[jets_.nref] = ecand;
+  }
+  // muon
+  else if( abspdgId == 13 ){
+    jets_.muSum[jets_.nref] += ecand;
+    jets_.muN[jets_.nref] += 1;
+    if (ecand > jets_.muMax[jets_.nref])
+      jets_.muMax[jets_.nref] = ecand;
+  }
+  // hadronic forward
+  else if( abspdgId == 1 ){
+    jets_.h_HFSum[jets_.nref] += ecand;
+    jets_.h_HFN[jets_.nref] += 1;
+    if (ecand > jets_.h_HFMax[jets_.nref])
+      jets_.h_HFMax[jets_.nref] = ecand;
+  }
+  // EG forward
+  else if( abspdgId == 2 ){
+    jets_.eg_HFSum[jets_.nref] += ecand;
+    jets_.eg_HFN[jets_.nref] += 1;
+    if (ecand > jets_.eg_HFMax[jets_.nref])
+      jets_.eg_HFMax[jets_.nref] = ecand;
+  }
+  // what if else??
+  else{
+    std::cout << " Unknown particle! something else??? ID: " << abspdgId << std::endl;
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
